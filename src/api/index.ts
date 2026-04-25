@@ -47,6 +47,12 @@ export const httpLLMRequest = (data: any, callback: Function) => {
   return currentSSE;
 };
 /**
+ * 写一个请求文生图的接口
+ */
+export const htttpLLMImagRequest = (data) => {
+  return post({ url: "/image/picllm", data });
+};
+/**
  *
  * @param data
  * @returns 创建一条新的对话记录

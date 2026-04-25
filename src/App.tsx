@@ -22,6 +22,7 @@ import {
   httpLLMRequest,
   stopLLMRequest,
   uploadImage,
+  htttpLLMImagRequest,
 } from "./api/index";
 import "./App.less";
 import MarkdownCard from "./components/markdownCard";
@@ -36,7 +37,7 @@ type MessageRole = string;
 interface ChatMessage {
   id?: number;
   role: MessageRole;
-  content: string|any[];
+  content: string | any[];
   cardName?: string;
   _arguments?: any;
 }
@@ -60,6 +61,7 @@ function App() {
   const messageEndRef = useRef<HTMLDivElement | null>(null);
   const autoScrollRafId = useRef<number | null>(null);
   const [imageUrl, setImageUrl] = useState(""); // 存放上传后返回的 base64
+  const [mode, setMode] = useState("text");
   // 定义一个 ref 存控制器
   const conversationRequestIdRef = useRef(0);
   // Demo 场景：为了调用后端 `/llm`，需要携带 userId / convertId。
@@ -74,7 +76,7 @@ function App() {
       return;
     }
     const currentId = Date.now();
-    let userObj:any = {
+    let userObj: any = {
       id: currentId,
       role: "user" as const,
       content: value,
@@ -86,47 +88,66 @@ function App() {
           image_url: imageUrl,
         },
         {
-          type:'text',
-          text:value
-        }
+          type: "text",
+          text: value,
+        },
       ];
     }
     // 这里要先判断有没有图片 有的话 就得用数组
     setMessages((prev) => [...prev, userObj]);
+    setImageUrl("");
     setInputValue("");
     // ✅ 1. 发送前立刻开 loading（最重要！）
     setIsRequesting(true);
     
     try {
-      httpLLMRequest(
-        {
-          keyword: userObj.content,
+      // 判断类型是否是文生图`
+      if (mode != "text") {
+        htttpLLMImagRequest({
+          content: userObj.content,
           userId,
           convertId,
-        },
-        (event: any) => {
-          // 我们要的数据就在event.data里面 他是一个字符串
-          let convertObj = JSON.parse(event.data);
-          if (convertObj.done) {
-            setIsRequesting(false);
-            return;
-          } else {
-            // 2. 安全更新：必须用函数式更新 prev
-            setMessages((prev) => {
-              // 查找是否已存在
-              const index = prev.findIndex((item) => item.id === convertObj.id);
-              // 不存在 → 新增
-              if (index === -1) {
-                return [...prev, convertObj];
-              }
-              // 存在 → 替换更新
-              const newList = [...prev];
-              newList[index] = convertObj;
-              return newList;
-            });
-          }
-        },
-      );
+        }).then((res) => {
+          console.log(res);
+          setMessages((prev) => [...prev, res.data]);
+          setImageUrl("");
+          setInputValue("");
+          // ✅ 1. 发送前立刻开 loading（最重要！）
+          setIsRequesting(false);
+        });
+      } else {
+        httpLLMRequest(
+          {
+            keyword: userObj.content,
+            userId,
+            convertId,
+          },
+          (event: any) => {
+            // 我们要的数据就在event.data里面 他是一个字符串
+            let convertObj = JSON.parse(event.data);
+            if (convertObj.done) {
+              setIsRequesting(false);
+              return;
+            } else {
+              // 2. 安全更新：必须用函数式更新 prev
+              setMessages((prev) => {
+                // 查找是否已存在
+                const index = prev.findIndex(
+                  (item) => item.id === convertObj.id,
+                );
+                // 不存在 → 新增
+                if (index === -1) {
+                  return [...prev, convertObj];
+                }
+                // 存在 → 替换更新
+                const newList = [...prev];
+                newList[index] = convertObj;
+                return newList;
+              });
+            }
+          },
+        );
+      }
     } catch (error) {
       setIsRequesting(false);
       const errorMessage =
@@ -142,6 +163,7 @@ function App() {
     } finally {
     }
   };
+  console.log('messages===',messages)
   // 单独写一个获取右侧历史记录的方法
   const getHistoryTitle = async () => {
     let ConversationList = await httpConversationlistTitle({ userId });
@@ -217,6 +239,7 @@ function App() {
     if (!item.convertId) {
       return;
     }
+    setImageUrl("");
     setCovertId(item.convertId);
     // 先获取一下title
     await getHistoryTitle();
@@ -326,6 +349,11 @@ function App() {
       message.error("上传接口异常");
     }
   };
+  const handleChangeMode = (type) => {
+    if (type != mode) {
+      setMode(type);
+    }
+  };
   useEffect(() => {
     scrollToLatestMessage();
     return () => {
@@ -394,12 +422,33 @@ function App() {
       </Sider>
 
       <Content className="chat-main">
-        <div className="chat-header">
-          <Title level={3}>AI 对话</Title>
-          <Text type="secondary">
-            单页面聊天示例（React + TS + Vite + Ant Design）
-          </Text>
+        <div className="chat_top_header">
+          <div className="chat-header">
+            <Title level={3}>AI 对话</Title>
+            <Text type="secondary">
+              单页面聊天示例（React + TS + Vite + Ant Design）
+            </Text>
+          </div>
+          <div className="chat_right_mode">
+            <Button
+              onClick={() => {
+                handleChangeMode("text");
+              }}
+              type={mode == "text" ? "primary" : "dashed"}
+            >
+              文本生成
+            </Button>
+            <Button
+              onClick={() => {
+                handleChangeMode("image");
+              }}
+              type={mode == "image" ? "primary" : "dashed"}
+            >
+              图片生成
+            </Button>
+          </div>
         </div>
+
         {/* 聊天区 */}
         <div className="chat-messages" ref={chatMessagesRef}>
           {messages.map((message, index) => {
